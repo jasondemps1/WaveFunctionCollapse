@@ -8,6 +8,9 @@
 #define EXAMPLE_W 3
 #define EXAMPLE_H 3
 
+#define MAP_WIDTH 32
+#define MAP_HEIGHT 32
+
 char tiles[] = { 'S', 'C', 'L' };
 
 char example[EXAMPLE_W * EXAMPLE_H] = {
@@ -15,6 +18,8 @@ char example[EXAMPLE_W * EXAMPLE_H] = {
     tiles[1], tiles[1], tiles[0],
     tiles[2], tiles[2], tiles[1]
 };
+
+std::vector<char> map[MAP_WIDTH * MAP_HEIGHT];
 
 std::unordered_map<char, int> frequencies;
 
@@ -82,11 +87,25 @@ void PrintRules()
     }
 }
 
+void InitMap()
+{
+    std::vector<char> map_template;
+    for (int i = 0; i < sizeof(tiles); ++i)
+        map_template.push_back(tiles[i]);
+
+    // Generate a map of superposition tiles
+    for (int i = 0; i < MAP_HEIGHT; ++i)
+        for (int j = 0; j < MAP_WIDTH; ++j)
+            map[i * MAP_WIDTH + j] = map_template;
+}
+
 int main(int argc, char** argv)
 {
     InitRules();
     GenerateRules();
     PrintRules();
+
+    InitMap();
 
     return 0;
 }
