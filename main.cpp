@@ -8,17 +8,20 @@
 #define EXAMPLE_W 3
 #define EXAMPLE_H 3
 
+char tiles[] = { 'S', 'C', 'L' };
+
 char example[EXAMPLE_W * EXAMPLE_H] = {
-    'S', 'S', 'S',
-    'C', 'C', 'S',
-    'L', 'L', 'C'
+    tiles[0], tiles[0], tiles[0],
+    tiles[1], tiles[1], tiles[0],
+    tiles[2], tiles[2], tiles[1]
 };
+
+std::unordered_map<char, int> frequencies;
 
 typedef std::tuple<int, int> dir;
 typedef std::tuple<char, char, dir> rule;
 
 std::unordered_map<const char*, dir> dirs;
-
 std::vector<rule> rules;
 
 void AddRule(char from, char to, dir direction)
@@ -29,6 +32,11 @@ void AddRule(char from, char to, dir direction)
     auto it = std::find(rules.begin(), rules.end(), r);
     if (it == rules.end())
         rules.push_back(r);
+}
+
+void IncreaseFrequency(char tile)
+{
+    frequencies[tile]++;
 }
 
 void InitRules()
@@ -44,6 +52,8 @@ void GenerateRules()
     for (int row = 0; row < EXAMPLE_H; ++row) {
         for (int col = 0; col < EXAMPLE_W; ++col) {
             char from = example[row * EXAMPLE_W + col];
+
+            IncreaseFrequency(from);
 
             // Up Check
             if (row != 0)
@@ -65,6 +75,10 @@ void PrintRules()
 {
     for (rule r : rules) {
         printf("%c (%d, %d) %c\n", std::get<0>(r), std::get<0>(std::get<2>(r)), std::get<1>(std::get<2>(r)), std::get<1>(r));
+    }
+
+    for (auto& f : frequencies) {
+        printf("Saw %c => %d times\n", f.first, f.second);
     }
 }
 
