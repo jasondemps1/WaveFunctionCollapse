@@ -9,6 +9,7 @@
 #include <array>
 #include <limits>
 #include <random>
+#include <stack>
 
 typedef std::tuple<int, int> dir;
 typedef std::tuple<char, char, dir> rule;
@@ -122,11 +123,6 @@ tile& GetMapTile(position pos)
     return map[pos.x * MAP_WIDTH + pos.y];
 }
 
-bool test(const char c)
-{
-    return c != 'L';
-}
-
 void CollapseWaveFunction(position currentTile)
 {
     auto vec = std::vector <std::pair<const char, int>>(frequencies.begin(), frequencies.end());
@@ -142,13 +138,10 @@ void CollapseWaveFunction(position currentTile)
     auto& tile = GetMapTile(currentTile);
     auto end = std::remove_if(tile.begin(), tile.end(), [&](const char c) {return c != choiceChar;});
 
-    printf("Collapsed Position: (%d, %d) into %c\n", currentTile.x, currentTile.y, tile[0]);
-}
+    // Actually remove invalid choices
+    tile.resize(std::distance(tile.begin(), end));
 
-// Keep doing this function until the propagation has 'died down'
-void PropagateWaveFunction(position currentTile)
-{
-    // Compare us with our neighbors
+    printf("Collapsed Position: (%d, %d) into %c\n", currentTile.x, currentTile.y, tile[0]);
 }
 
 double ShannonEntropy(position tilePosition)
@@ -172,10 +165,10 @@ bool IsCollapsed(position tilePosition)
 }
 
 // Ensure the neighbor position is correct. Also ensure the position isnt fully collapsed yet.
-bool TestNeighbor(position tilePosition, std::vector<position>& neighbors)
+bool TestNeighbor(position tilePosition, std::vector<std::pair<position, dir>>& neighbors, dir direction)
 {
     if (tilePosition.x > 0 && tilePosition.y > 0 && !IsCollapsed(tilePosition)) {
-        neighbors.push_back(position{ tilePosition.x, tilePosition.y });
+        neighbors.push_back(std::make_pair(position{ tilePosition.x, tilePosition.y }, direction));
         return true;
     }
 
@@ -183,21 +176,74 @@ bool TestNeighbor(position tilePosition, std::vector<position>& neighbors)
 }
 
 // Return a list of tile positions which are neighbors
-std::vector<position> FindAvailableNeighbors(position tilePosition)
+std::vector<std::pair<position, dir>> FindAvailableNeighbors(position tilePosition)
 {
     // Find neighbors,
-    std::vector<position> neighbors;
+    std::vector<std::pair<position, dir>> neighbors;
 
     // Start top left and go clock-wise
-    TestNeighbor(position{ tilePosition.x - 1, tilePosition.y - 1 }, neighbors); // Top-Left
-    TestNeighbor(position{ tilePosition.x, tilePosition.y - 1 }, neighbors); // Top
-    TestNeighbor(position{ tilePosition.x + 1, tilePosition.y - 1 }, neighbors); // Top-Right
-    TestNeighbor(position{ tilePosition.x + 1, tilePosition.y }, neighbors); // Right
-    TestNeighbor(position{ tilePosition.x + 1, tilePosition.y + 1 }, neighbors); // Bottom-Right
-    TestNeighbor(position{ tilePosition.x, tilePosition.y + 1 }, neighbors); // Bottom
-    TestNeighbor(position{ tilePosition.x - 1, tilePosition.y + 1 }, neighbors); // Bottom-Left
+    //TestNeighbor(position{ tilePosition.x - 1, tilePosition.y - 1 }, neighbors); // Top-Left
+    TestNeighbor(position{ tilePosition.x, tilePosition.y - 1 }, neighbors, dirs["up"]); // Top
+    //TestNeighbor(position{ tilePosition.x + 1, tilePosition.y - 1 }, neighbors); // Top-Right
+    TestNeighbor(position{ tilePosition.x + 1, tilePosition.y }, neighbors, dirs["right"]); // Right
+    //TestNeighbor(position{ tilePosition.x + 1, tilePosition.y + 1 }, neighbors); // Bottom-Right
+    TestNeighbor(position{ tilePosition.x, tilePosition.y + 1 }, neighbors, dirs["down"]); // Bottom
+    //TestNeighbor(position{ tilePosition.x - 1, tilePosition.y + 1 }, neighbors); // Bottom-Left
+    TestNeighbor(position{ tilePosition.x - 1, tilePosition.y }, neighbors, dirs["left"]); // Left
 
     return neighbors;
+}
+
+bool CheckRules(const char current, std::pair<position, dir> neighborTile, const char neighbor)
+{
+    rule temp_rule = rule(current, neighbor, neighborTile.second);
+
+    auto it = std::find(rules.begin(), rules.end(), temp_rule);
+
+    return (it != rules.end());
+}
+
+void Constrain(position pos, const char tile)
+{
+    auto& possibilities = GetMapTile(pos);
+    auto it = std::find(possibilities.begin(), possibilities.end(), tile);
+
+    if (it != possibilities.end())
+        possibilities.erase(it);
+}
+
+// Keep doing this function until the propagation has 'died down'
+void PropagateWaveFunction(position currentTile)
+{
+    // Propagate each possible change in the map
+    std::stack<position> propagation;
+    propagation.push(currentTile);
+
+    // While we still have tiles on the stack
+    while (!propagation.empty()) {
+        position current_pos = propagation.top();
+        tile& current_tile = GetMapTile(current_pos);
+
+        propagation.pop();
+
+        // Look through each neighbor
+        for (auto neighbor : FindAvailableNeighbors(current_pos)) {
+            // Investigate neighbor's possibilities. Check if any of their possibilities are compatible with any of our possibilities.
+            //  - Look through our rules for anything that could match our situation
+            //  -
+            //auto& neighbor_tile = neighbor.first;
+
+            for (auto& neighbor_tile : GetMapTile(neighbor.first)) {
+                bool outcome = CheckRules(current_tile[0], neighbor, neighbor_tile);
+
+                if (!outcome) {
+                    Constrain(neighbor.first, neighbor_tile);
+                    // If not, remove the possibility from neighbor and push neighbor position to stack
+                    propagation.push(neighbor.first);
+                }
+            }
+        }
+    }
 }
 
 // Start with max possibilities
@@ -209,7 +255,7 @@ std::vector<position> FindAvailableNeighbors(position tilePosition)
 // Once done: randomly select 1 out of equivalent map
 position FindLowestEntropyNeighbor(position tilePosition)
 {
-    std::vector<position> neighbors = FindAvailableNeighbors(tilePosition);
+    auto neighbors = FindAvailableNeighbors(tilePosition);
 
     std::vector<position> equiv_entropy;
     double lowest_entropy = std::numeric_limits<double>::max();
@@ -217,17 +263,18 @@ position FindLowestEntropyNeighbor(position tilePosition)
     position lowest_entropy_pos{ std::numeric_limits<int>::min(), std::numeric_limits<int>::min() };
 
     for (auto& neighbor : neighbors) {
-        auto neighbor_entropy = ShannonEntropy(neighbor);
+        auto& neighbor_position = neighbor.first;
+        auto neighbor_entropy = ShannonEntropy(neighbor_position);
 
         if (neighbor_entropy > lowest_entropy)
             continue;
         else if (neighbor_entropy < lowest_entropy) {
             lowest_entropy = neighbor_entropy;
-            lowest_entropy_pos = neighbor;
+            lowest_entropy_pos = neighbor_position;
             equiv_entropy.clear();
         }
         else
-            equiv_entropy.push_back(neighbor);
+            equiv_entropy.push_back(neighbor_position);
     }
 
     return equiv_entropy[std::rand() % equiv_entropy.size()];
