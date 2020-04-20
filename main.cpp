@@ -8,6 +8,7 @@
 #include <ctime>
 #include <array>
 #include <limits>
+#include <random>
 
 typedef std::tuple<int, int> dir;
 typedef std::tuple<char, char, dir> rule;
@@ -37,6 +38,16 @@ std::unordered_map<char, int> frequencies;
 
 std::unordered_map<const char*, dir> dirs;
 std::vector<rule> rules;
+
+int ChooseRandomWeighted(std::vector<double> weights)
+{
+    static std::mt19937 gen;
+    std::discrete_distribution<int> dist(std::begin(weights), std::end(weights));
+
+    gen.seed(std::time(nullptr));
+
+    return dist(gen);
+}
 
 void AddRule(char from, char to, dir direction)
 {
@@ -106,8 +117,38 @@ void InitMap()
             map[i * MAP_WIDTH + j] = map_template;
 }
 
+tile& GetMapTile(position pos)
+{
+    return map[pos.x * MAP_WIDTH + pos.y];
+}
+
+bool test(const char c)
+{
+    return c != 'L';
+}
+
 void CollapseWaveFunction(position currentTile)
 {
+    auto vec = std::vector <std::pair<const char, int>>(frequencies.begin(), frequencies.end());
+    std::vector<double> vec2;
+    std::transform(vec.begin(), vec.end(), std::back_inserter(vec2),
+        [](const std::pair<const char, int>& p) {
+            return p.second;
+        });
+    int choice = ChooseRandomWeighted(vec2);
+    char choiceChar = vec[choice].first;
+
+    // Remove choices not matching our choice above from tile possibilities.
+    auto& tile = GetMapTile(currentTile);
+    auto end = std::remove_if(tile.begin(), tile.end(), [&](const char c) {return c != choiceChar;});
+
+    printf("Collapsed Position: (%d, %d) into %c\n", currentTile.x, currentTile.y, tile[0]);
+}
+
+// Keep doing this function until the propagation has 'died down'
+void PropagateWaveFunction(position currentTile)
+{
+    // Compare us with our neighbors
 }
 
 double ShannonEntropy(position tilePosition)
@@ -115,7 +156,7 @@ double ShannonEntropy(position tilePosition)
     int sum_weights = 0;
     int sum_weights_log = 0;
 
-    for (auto& tile_possibility : map[tilePosition.x]) {
+    for (auto& tile_possibility : GetMapTile(tilePosition)) {
         int weight = frequencies[tile_possibility];
 
         sum_weights += weight;
@@ -166,8 +207,7 @@ std::vector<position> FindAvailableNeighbors(position tilePosition)
 // if new_tile == current
 //  add to equivalent map
 // Once done: randomly select 1 out of equivalent map
-//std::vector<char>& FindLowestEntropy()
-position FindLowestEntropy(position tilePosition)
+position FindLowestEntropyNeighbor(position tilePosition)
 {
     std::vector<position> neighbors = FindAvailableNeighbors(tilePosition);
 
@@ -193,14 +233,41 @@ position FindLowestEntropy(position tilePosition)
     return equiv_entropy[std::rand() % equiv_entropy.size()];
 }
 
-void Engine(position startTile)
+position FindLowestEntropyGlobal()
+{
+    std::vector<position> equiv_entropy;
+    double lowest_entropy = std::numeric_limits<double>::max();
+
+    position lowest_entropy_pos{ std::numeric_limits<int>::min(), std::numeric_limits<int>::min() };
+
+    for (int i = 0; i < MAP_HEIGHT; ++i)
+        for (int j = 0; j < MAP_WIDTH; ++j) {
+            position tile_pos = position{ j,i };
+            auto tile_entropy = ShannonEntropy(tile_pos);
+
+            if (tile_entropy > lowest_entropy)
+                continue;
+            else if (tile_entropy < lowest_entropy) {
+                lowest_entropy = tile_entropy;
+                lowest_entropy_pos = tile_pos;
+                equiv_entropy.clear();
+            }
+            else
+                equiv_entropy.push_back(tile_pos);
+        }
+
+    return equiv_entropy[std::rand() % equiv_entropy.size()];
+}
+
+void Engine()
 {
     while (true) // TODO: Loop until contradiction/paradox or complete
     {
-        position nextTile = FindLowestEntropy(startTile);
+        position nextTile = FindLowestEntropyGlobal();
+        CollapseWaveFunction(nextTile);
 
         try {
-            CollapseWaveFunction(nextTile);
+            PropagateWaveFunction(nextTile);
         }
         catch (std::exception & e) {
         }
@@ -225,7 +292,7 @@ int main(int argc, char** argv)
 
     InitMap();
 
-    Engine(position{ rand() % MAP_WIDTH, rand() % MAP_HEIGHT });
+    Engine();
 
     return 0;
 }
