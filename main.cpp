@@ -171,7 +171,7 @@ bool IsCollapsed(position tilePosition)
 // Ensure the neighbor position is correct. Also ensure the position isnt fully collapsed yet.
 bool TestNeighbor(position tilePosition, std::vector<std::pair<position, dir>>& neighbors, dir direction)
 {
-    if (tilePosition.x > 0 && tilePosition.y > 0 && !IsCollapsed(tilePosition)) {
+    if (tilePosition.x > 0 && tilePosition.x < MAP_WIDTH && tilePosition.y > 0 && tilePosition.y < MAP_HEIGHT && !IsCollapsed(tilePosition)) {
         neighbors.push_back(std::make_pair(position{ tilePosition.x, tilePosition.y }, direction));
         return true;
     }
