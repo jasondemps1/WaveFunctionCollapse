@@ -40,6 +40,8 @@ std::unordered_map<char, int> frequencies;
 std::unordered_map<const char*, dir> dirs;
 std::vector<rule> rules;
 
+char outputMap[MAP_WIDTH * MAP_HEIGHT];
+
 int ChooseRandomWeighted(std::vector<double> weights)
 {
     static std::mt19937 gen;
@@ -142,6 +144,8 @@ void CollapseWaveFunction(position currentTile)
     tile.resize(std::distance(tile.begin(), end));
 
     printf("Collapsed Position: (%d, %d) into %c\n", currentTile.x, currentTile.y, tile[0]);
+
+    outputMap[currentTile.x * MAP_WIDTH + currentTile.y] = tile[0];
 }
 
 double ShannonEntropy(position tilePosition)
@@ -208,11 +212,24 @@ void Constrain(position pos, const char tile)
     auto& possibilities = GetMapTile(pos);
     auto it = std::find(possibilities.begin(), possibilities.end(), tile);
 
-    if (it != possibilities.end())
+    if (it != possibilities.end()) {
         possibilities.erase(it);
+
+        printf("Collapsed Position: (%d, %d) into ", pos.x, pos.y);
+
+        for (auto& possibility : possibilities) {
+            printf("%c ", possibility);
+        }
+
+        printf("\n");
+    }
+
+    if (possibilities.size() == 1)
+        outputMap[pos.x * MAP_WIDTH + pos.y] = possibilities[0];
 }
 
 // Keep doing this function until the propagation has 'died down'
+// TODO: Throw on a contradiction/paradox
 void PropagateWaveFunction(position currentTile)
 {
     // Propagate each possible change in the map
@@ -230,8 +247,6 @@ void PropagateWaveFunction(position currentTile)
         for (auto neighbor : FindAvailableNeighbors(current_pos)) {
             // Investigate neighbor's possibilities. Check if any of their possibilities are compatible with any of our possibilities.
             //  - Look through our rules for anything that could match our situation
-            //  -
-            //auto& neighbor_tile = neighbor.first;
 
             for (auto& neighbor_tile : GetMapTile(neighbor.first)) {
                 bool outcome = CheckRules(current_tile[0], neighbor, neighbor_tile);
@@ -306,9 +321,30 @@ position FindLowestEntropyGlobal()
     return equiv_entropy[std::rand() % equiv_entropy.size()];
 }
 
+bool IsGloballyCollapsed()
+{
+    for (auto& tile : map) {
+        if (tile.size() > 1)
+            return false;
+    }
+
+    return true;
+}
+
+void DrawMap()
+{
+    for (int i = 0; i < MAP_HEIGHT; ++i) {
+        for (int j = 0; j < MAP_WIDTH; ++j) {
+            //position tile_pos = position{ j,i };
+            printf("%c", outputMap[i * MAP_WIDTH + j]);
+        }
+        printf("\n");
+    }
+}
+
 void Engine()
 {
-    while (true) // TODO: Loop until contradiction/paradox or complete
+    while (!IsGloballyCollapsed()) // TODO: Loop until contradiction/paradox or complete
     {
         position nextTile = FindLowestEntropyGlobal();
         CollapseWaveFunction(nextTile);
@@ -317,8 +353,8 @@ void Engine()
             PropagateWaveFunction(nextTile);
         }
         catch (std::exception & e) {
+            // TODO: Contradiction/Paradox exception
         }
-        // foreach neighbor, collapse its wave function until nothing to do, and so on.
     }
 }
 
@@ -340,6 +376,8 @@ int main(int argc, char** argv)
     InitMap();
 
     Engine();
+
+    DrawMap();
 
     return 0;
 }
