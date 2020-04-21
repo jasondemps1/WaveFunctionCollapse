@@ -122,7 +122,7 @@ void InitMap()
 
 tile& GetMapTile(position pos)
 {
-    return map[pos.x * MAP_WIDTH + pos.y];
+    return map[pos.y * MAP_WIDTH + pos.x];
 }
 
 void CollapseWaveFunction(position currentTile)
@@ -165,7 +165,7 @@ double ShannonEntropy(position tilePosition)
 
 bool IsCollapsed(position tilePosition)
 {
-    return map[tilePosition.x * MAP_WIDTH + tilePosition.y].size() == 1;
+    return GetMapTile(tilePosition).size() == 1;
 }
 
 // Ensure the neighbor position is correct. Also ensure the position isnt fully collapsed yet.
@@ -215,7 +215,7 @@ void Constrain(position pos, const char tile)
     if (it != possibilities.end()) {
         possibilities.erase(it);
 
-        printf("Collapsed Position: (%d, %d) into ", pos.x, pos.y);
+        printf("Constrained Position: (%d, %d) into ", pos.x, pos.y);
 
         for (auto& possibility : possibilities) {
             printf("%c ", possibility);
