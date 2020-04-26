@@ -211,19 +211,19 @@ void CollapseWaveFunction(position currentTile)
     for (auto& w : valid_weights)
         total_weight += w.second;
 
-    auto rnd = (((double)rand() / (RAND_MAX))) * total_weight;
-
     char choiceChar = -1;
-    for (auto& w : valid_weights) {
-        rnd -= w.second;
-        if (rnd < 0) {
-            choiceChar = w.first;
-            break;
-        }
-    }
 
-    if (choiceChar == -1)
-        throw;
+    do {
+        auto rnd = (((double)rand() / (RAND_MAX))) * total_weight;
+
+        for (auto& w : valid_weights) {
+            rnd -= w.second;
+            if (rnd < 0) {
+                choiceChar = w.first;
+                break;
+            }
+        }
+    } while (choiceChar == -1);
 
     // Remove choices not matching our choice above from tile possibilities.
     auto end = std::remove_if(tile.begin(), tile.end(), [&](const char c) {return c != choiceChar;});
@@ -406,13 +406,47 @@ bool IsGloballyCollapsed()
     return true;
 }
 
-void DrawMap()
+#define COLOR_BLACK 0
+#define COLOR_BLUE 1
+#define COLOR_GREEN 2
+#define COLOR_AQUA 3
+#define COLOR_RED 4
+#define COLOR_PURPLE 5
+#define COLOR_WHITE 15
+
+#include <windows.h>
+
+inline void setcolor(int textcol, int backcol)
 {
-    for (int i = 0; i < MAP_HEIGHT; ++i) {
-        for (int j = 0; j < MAP_WIDTH; ++j) {
-            //position tile_pos = position{ j,i };
-            printf("%c", outputMap[i * MAP_WIDTH + j]);
+    if ((textcol % 16) == (backcol % 16))textcol++;
+    textcol %= 16; backcol %= 16;
+    unsigned short wAttributes = ((unsigned)backcol << 4) | (unsigned)textcol;
+    HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    SetConsoleTextAttribute(hStdOut, wAttributes);
+}
+
+void DrawMap(int xBound, int yBound, const char* map)
+{
+    for (int y = 0; y < yBound; ++y) {
+        for (int x = 0; x < xBound; ++x) {
+            auto c = map[MAP_POSITION(y, x, xBound)];
+
+            switch (c) {
+            case 'S':
+                setcolor(COLOR_BLUE, COLOR_BLUE);
+                break;
+            case 'C':
+                setcolor(COLOR_RED, COLOR_RED);
+                break;
+            case 'L':
+                setcolor(COLOR_GREEN, COLOR_GREEN);
+                break;
+            }
+
+            printf("%c", c);
         }
+        setcolor(COLOR_WHITE, COLOR_BLACK);
         printf("\n");
     }
 }
@@ -475,11 +509,15 @@ Start:
     catch (std::exception & e)
     {
         printf("%s\n", e.what());
-        DrawMap();
+        DrawMap(MAP_WIDTH, MAP_HEIGHT, outputMap);
         goto Start;
     }
 
-    DrawMap();
+    printf("EXAMPLE:\n");
+    DrawMap(EXAMPLE_W, EXAMPLE_H, example);
+
+    printf("\nRESULT:\n");
+    DrawMap(MAP_WIDTH, MAP_HEIGHT, outputMap);
 
     if (AskNewMap())
         goto Start;
