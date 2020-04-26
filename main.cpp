@@ -10,6 +10,16 @@
 #include <limits>
 #include <random>
 #include <stack>
+#include <exception>
+#include <chrono>
+
+class ContradictionException : public std::exception
+{
+    virtual const char* what() const throw()
+    {
+        return "EXCEPTION: Contradiction";
+    }
+} ContradictionException;
 
 typedef std::tuple<int, int> dir;
 typedef std::tuple<char, char, dir> rule;
@@ -30,8 +40,8 @@ char example[EXAMPLE_W * EXAMPLE_H] = {
     tiles[2], tiles[2], tiles[1]
 };
 
-#define MAP_WIDTH 32
-#define MAP_HEIGHT 32
+#define MAP_WIDTH 3
+#define MAP_HEIGHT 3
 
 tile map[MAP_WIDTH * MAP_HEIGHT];
 
@@ -42,12 +52,13 @@ std::vector<rule> rules;
 
 char outputMap[MAP_WIDTH * MAP_HEIGHT];
 
+unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+
+std::mt19937 gen;
+
 int ChooseRandomWeighted(std::vector<double> weights)
 {
-    static std::mt19937 gen;
     std::discrete_distribution<int> dist(std::begin(weights), std::end(weights));
-
-    gen.seed(std::time(nullptr));
 
     return dist(gen);
 }
@@ -118,6 +129,8 @@ void InitMap()
     for (int i = 0; i < MAP_HEIGHT; ++i)
         for (int j = 0; j < MAP_WIDTH; ++j)
             map[i * MAP_WIDTH + j] = map_template;
+
+    memset(outputMap, 0, MAP_WIDTH * MAP_HEIGHT * sizeof outputMap[0]);
 }
 
 tile& GetMapTile(position pos)
@@ -127,21 +140,41 @@ tile& GetMapTile(position pos)
 
 void CollapseWaveFunction(position currentTile)
 {
-    auto vec = std::vector <std::pair<const char, int>>(frequencies.begin(), frequencies.end());
-    std::vector<double> vec2;
-    std::transform(vec.begin(), vec.end(), std::back_inserter(vec2),
-        [](const std::pair<const char, int>& p) {
-            return p.second;
-        });
-    int choice = ChooseRandomWeighted(vec2);
-    char choiceChar = vec[choice].first;
+    auto& tile = GetMapTile(currentTile);
+    auto valid_weights = std::vector<std::pair<const char, int>>();
+
+    for (auto& weight : frequencies) {
+        auto it = std::find(tile.begin(), tile.end(), weight.first);
+        if (it != tile.end())
+            valid_weights.push_back(weight);
+    }
+
+    int total_weight = 0;
+
+    for (auto& w : valid_weights)
+        total_weight += w.second;
+
+    auto rnd = ((double)rand() / (RAND_MAX)) + 1;
+
+    char choiceChar;
+    for (auto& w : valid_weights) {
+        rnd -= w.second;
+        if (rnd < 0) {
+            //chosen = w;
+            choiceChar = w.first;
+            break;
+        }
+    }
 
     // Remove choices not matching our choice above from tile possibilities.
-    auto& tile = GetMapTile(currentTile);
     auto end = std::remove_if(tile.begin(), tile.end(), [&](const char c) {return c != choiceChar;});
 
     // Actually remove invalid choices
     tile.resize(std::distance(tile.begin(), end));
+
+    // Check for a contradiction
+    if (tile.empty())
+        throw ContradictionException;
 
     printf("Collapsed Position: (%d, %d) into %c\n", currentTile.x, currentTile.y, tile[0]);
 
@@ -215,6 +248,10 @@ void Constrain(position pos, const char tile)
     if (it != possibilities.end()) {
         possibilities.erase(it);
 
+        // Check for a contradiction
+        if (possibilities.empty())
+            throw ContradictionException;
+
         printf("Constrained Position: (%d, %d) into ", pos.x, pos.y);
 
         for (auto& possibility : possibilities) {
@@ -229,7 +266,6 @@ void Constrain(position pos, const char tile)
 }
 
 // Keep doing this function until the propagation has 'died down'
-// TODO: Throw on a contradiction/paradox
 void PropagateWaveFunction(position currentTile)
 {
     // Propagate each possible change in the map
@@ -249,9 +285,9 @@ void PropagateWaveFunction(position currentTile)
             //  - Look through our rules for anything that could match our situation
 
             for (auto& neighbor_tile : GetMapTile(neighbor.first)) {
-                bool outcome = CheckRules(current_tile[0], neighbor, neighbor_tile);
+                bool other_possible = std::any_of(current_tile.begin(), current_tile.end(), [&](auto& t) { return CheckRules(t, neighbor, neighbor_tile); });
 
-                if (!outcome) {
+                if (!other_possible) {
                     Constrain(neighbor.first, neighbor_tile);
                     // If not, remove the possibility from neighbor and push neighbor position to stack
                     propagation.push(neighbor.first);
@@ -268,33 +304,6 @@ void PropagateWaveFunction(position currentTile)
 // if new_tile == current
 //  add to equivalent map
 // Once done: randomly select 1 out of equivalent map
-position FindLowestEntropyNeighbor(position tilePosition)
-{
-    auto neighbors = FindAvailableNeighbors(tilePosition);
-
-    std::vector<position> equiv_entropy;
-    double lowest_entropy = std::numeric_limits<double>::max();
-
-    position lowest_entropy_pos{ std::numeric_limits<int>::min(), std::numeric_limits<int>::min() };
-
-    for (auto& neighbor : neighbors) {
-        auto& neighbor_position = neighbor.first;
-        auto neighbor_entropy = ShannonEntropy(neighbor_position);
-
-        if (neighbor_entropy > lowest_entropy)
-            continue;
-        else if (neighbor_entropy < lowest_entropy) {
-            lowest_entropy = neighbor_entropy;
-            lowest_entropy_pos = neighbor_position;
-            equiv_entropy.clear();
-        }
-        else
-            equiv_entropy.push_back(neighbor_position);
-    }
-
-    return equiv_entropy[std::rand() % equiv_entropy.size()];
-}
-
 position FindLowestEntropyGlobal()
 {
     std::vector<position> equiv_entropy;
@@ -305,6 +314,11 @@ position FindLowestEntropyGlobal()
     for (int i = 0; i < MAP_HEIGHT; ++i)
         for (int j = 0; j < MAP_WIDTH; ++j) {
             position tile_pos = position{ j,i };
+
+            // Immediately ignore any tile thats fully collapsed
+            if (GetMapTile(tile_pos).size() == 1)
+                continue;
+
             auto tile_entropy = ShannonEntropy(tile_pos);
 
             if (tile_entropy > lowest_entropy)
@@ -314,8 +328,7 @@ position FindLowestEntropyGlobal()
                 lowest_entropy_pos = tile_pos;
                 equiv_entropy.clear();
             }
-            else
-                equiv_entropy.push_back(tile_pos);
+            equiv_entropy.push_back(tile_pos);
         }
 
     return equiv_entropy[std::rand() % equiv_entropy.size()];
@@ -342,40 +355,54 @@ void DrawMap()
     }
 }
 
+void Step()
+{
+    position nextTile = FindLowestEntropyGlobal();
+    CollapseWaveFunction(nextTile);
+
+    PropagateWaveFunction(nextTile);
+}
+
 void Engine()
 {
-    while (!IsGloballyCollapsed()) // TODO: Loop until contradiction/paradox or complete
+    while (!IsGloballyCollapsed())
     {
-        position nextTile = FindLowestEntropyGlobal();
-        CollapseWaveFunction(nextTile);
-
-        try {
-            PropagateWaveFunction(nextTile);
-        }
-        catch (std::exception & e) {
-            // TODO: Contradiction/Paradox exception
-        }
+        // TODO: Future, we might rollback possibility stack to find a good one?
+        Step();
     }
 }
 
 unsigned int InitRand()
 {
-    unsigned int seed = std::time(nullptr);
+    seed = std::chrono::system_clock::now().time_since_epoch().count();
+
     std::srand(seed);
+    gen.seed(seed);
+
+    printf("Seed value: %u\n", seed);
 
     return seed;
 }
 
 int main(int argc, char** argv)
 {
-    InitRand();
     InitRules();
     GenerateRules();
     PrintRules();
 
+Start:
+    InitRand();
     InitMap();
 
-    Engine();
+    try {
+        Engine();
+    }
+    catch (std::exception & e)
+    {
+        printf("%s\n", e.what());
+        DrawMap();
+        goto Start;
+    }
 
     DrawMap();
 
