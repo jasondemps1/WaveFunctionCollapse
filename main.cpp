@@ -13,6 +13,10 @@
 #include <exception>
 #include <chrono>
 
+enum Direction : int {
+    up, down, left, right, upleft, upright, downleft, downright, MAX
+} direction;
+
 class ContradictionException : public std::exception
 {
     virtual const char* what() const throw()
@@ -29,6 +33,13 @@ struct position {
     int x, y;
 };
 
+dir operator+(dir d1, dir d2) {
+    return std::make_tuple(
+        std::get<0>(d1) + std::get<0>(d2),
+        std::get<1>(d1) + std::get<1>(d2)
+    );
+}
+
 #define EXAMPLE_W 3
 #define EXAMPLE_H 3
 
@@ -40,14 +51,14 @@ char example[EXAMPLE_W * EXAMPLE_H] = {
     tiles[2], tiles[2], tiles[1]
 };
 
-#define MAP_WIDTH 3
-#define MAP_HEIGHT 3
+#define MAP_WIDTH 10
+#define MAP_HEIGHT 10
 
 tile map[MAP_WIDTH * MAP_HEIGHT];
 
 std::unordered_map<char, int> frequencies;
 
-std::unordered_map<const char*, dir> dirs;
+std::vector<dir> dirs;
 std::vector<rule> rules;
 
 char outputMap[MAP_WIDTH * MAP_HEIGHT];
@@ -56,6 +67,8 @@ unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 
 std::mt19937 gen;
 
+bool diags = true;
+
 int ChooseRandomWeighted(std::vector<double> weights)
 {
     std::discrete_distribution<int> dist(std::begin(weights), std::end(weights));
@@ -63,9 +76,9 @@ int ChooseRandomWeighted(std::vector<double> weights)
     return dist(gen);
 }
 
-void AddRule(char from, char to, dir direction)
+void AddRule(char from, char to, dir dir)
 {
-    rule r = rule(from, to, direction);
+    rule r = rule(from, to, dir);
 
     // Look for duplicates before push_back
     auto it = std::find(rules.begin(), rules.end(), r);
@@ -80,32 +93,71 @@ void IncreaseFrequency(char tile)
 
 void InitRules()
 {
-    dirs["up"] = dir(0, 1);
-    dirs["down"] = dir(0, -1);
-    dirs["left"] = dir(-1, 0);
-    dirs["right"] = dir(1, 0);
+    dirs.reserve(4);
+    dirs.resize(4);
+
+    dirs[Direction::up] = dir(0, 1);
+    dirs[Direction::down] = dir(0, -1);
+    dirs[Direction::left] = dir(-1, 0);
+    dirs[Direction::right] = dir(1, 0);
+
+    if (diags) {
+        dirs.resize(Direction::MAX);
+        dirs[Direction::upleft] = dirs[Direction::up] + dirs[Direction::left];
+        dirs[Direction::upright] = dirs[Direction::up] + dirs[Direction::right];
+        dirs[Direction::downleft] = dirs[Direction::down] + dirs[Direction::left];
+        dirs[Direction::downright] = dirs[Direction::down] + dirs[Direction::right];
+    }
+}
+
+bool IsNegativeBound(int val)
+{
+    return val < 0;
+}
+
+bool IsGreaterBound(int val, int max)
+{
+    return val > max;
 }
 
 void GenerateRules()
 {
     for (int row = 0; row < EXAMPLE_H; ++row) {
-        for (int col = 0; col < EXAMPLE_W; ++col) {
+        for (unsigned col = 0; col < EXAMPLE_W; ++col) {
             char from = example[row * EXAMPLE_W + col];
 
             IncreaseFrequency(from);
 
             // Up Check
-            if (row != 0)
-                AddRule(from, example[(row - 1) * EXAMPLE_W + col], dirs["up"]);
+            if (!IsNegativeBound(row - 1))
+                AddRule(from, example[(row - 1) * EXAMPLE_W + col], dirs[Direction::up]);
             // Down Check
-            if (row < EXAMPLE_H - 1)
-                AddRule(from, example[(row + 1) * EXAMPLE_W + col], dirs["down"]);
+            //if (row < EXAMPLE_H - 1)
+            if (!IsGreaterBound(row, EXAMPLE_H - 1))
+                AddRule(from, example[(row + 1) * EXAMPLE_W + col], dirs[Direction::down]);
             // Left Check
-            if (col != 0)
-                AddRule(from, example[row * EXAMPLE_W + (col - 1)], dirs["left"]);
+            if (!IsNegativeBound(col - 1))
+                AddRule(from, example[row * EXAMPLE_W + (col - 1)], dirs[Direction::left]);
             // Right Check
-            if (col < EXAMPLE_W - 1)
-                AddRule(from, example[row * EXAMPLE_W + (col + 1)], dirs["right"]);
+            //if (col < EXAMPLE_W - 1)
+            if (!IsGreaterBound(col, EXAMPLE_W - 1))
+                AddRule(from, example[row * EXAMPLE_W + (col + 1)], dirs[Direction::right]);
+
+            if (diags) {
+                // UpLeft
+                if (!IsNegativeBound(row - 1) && !IsNegativeBound(col - 1))
+                    AddRule(from, example[(row - 1) * EXAMPLE_W + (col - 1)], dirs[Direction::upleft]);
+                // UpRight
+                if (!IsNegativeBound(row - 1) && !IsNegativeBound(col))
+                    AddRule(from, example[(row - 1) * EXAMPLE_W + col], dirs[Direction::upright]);
+
+                // DownLeft
+                if (!IsNegativeBound(row) && !IsNegativeBound(col - 1))
+                    AddRule(from, example[row * EXAMPLE_W + (col - 1)], dirs[Direction::downleft]);
+                // DownRight
+                if (!IsNegativeBound(row) && !IsNegativeBound(col))
+                    AddRule(from, example[row * EXAMPLE_W + col], dirs[Direction::downright]);
+            }
         }
     }
 }
@@ -154,17 +206,19 @@ void CollapseWaveFunction(position currentTile)
     for (auto& w : valid_weights)
         total_weight += w.second;
 
-    auto rnd = ((double)rand() / (RAND_MAX)) + 1;
+    auto rnd = (((double)rand() / (RAND_MAX))) * total_weight;
 
-    char choiceChar;
+    char choiceChar = -1;
     for (auto& w : valid_weights) {
         rnd -= w.second;
         if (rnd < 0) {
-            //chosen = w;
             choiceChar = w.first;
             break;
         }
     }
+
+    if (choiceChar == -1)
+        throw;
 
     // Remove choices not matching our choice above from tile possibilities.
     auto end = std::remove_if(tile.begin(), tile.end(), [&](const char c) {return c != choiceChar;});
@@ -219,14 +273,17 @@ std::vector<std::pair<position, dir>> FindAvailableNeighbors(position tilePositi
     std::vector<std::pair<position, dir>> neighbors;
 
     // Start top left and go clock-wise
-    //TestNeighbor(position{ tilePosition.x - 1, tilePosition.y - 1 }, neighbors); // Top-Left
-    TestNeighbor(position{ tilePosition.x, tilePosition.y - 1 }, neighbors, dirs["up"]); // Top
-    //TestNeighbor(position{ tilePosition.x + 1, tilePosition.y - 1 }, neighbors); // Top-Right
-    TestNeighbor(position{ tilePosition.x + 1, tilePosition.y }, neighbors, dirs["right"]); // Right
-    //TestNeighbor(position{ tilePosition.x + 1, tilePosition.y + 1 }, neighbors); // Bottom-Right
-    TestNeighbor(position{ tilePosition.x, tilePosition.y + 1 }, neighbors, dirs["down"]); // Bottom
-    //TestNeighbor(position{ tilePosition.x - 1, tilePosition.y + 1 }, neighbors); // Bottom-Left
-    TestNeighbor(position{ tilePosition.x - 1, tilePosition.y }, neighbors, dirs["left"]); // Left
+    TestNeighbor(position{ tilePosition.x, tilePosition.y - 1 }, neighbors, dirs[Direction::up]); // Top
+    TestNeighbor(position{ tilePosition.x + 1, tilePosition.y }, neighbors, dirs[Direction::right]); // Right
+    TestNeighbor(position{ tilePosition.x, tilePosition.y + 1 }, neighbors, dirs[Direction::down]); // Bottom
+    TestNeighbor(position{ tilePosition.x - 1, tilePosition.y }, neighbors, dirs[Direction::left]); // Left
+
+    if (diags) {
+        TestNeighbor(position{ tilePosition.x - 1, tilePosition.y - 1 }, neighbors, dirs[Direction::upleft]); // Top-Left
+        TestNeighbor(position{ tilePosition.x + 1, tilePosition.y - 1 }, neighbors, dirs[Direction::upright]); // Top-Right
+        TestNeighbor(position{ tilePosition.x + 1, tilePosition.y + 1 }, neighbors, dirs[Direction::downright]); // Bottom-Right
+        TestNeighbor(position{ tilePosition.x - 1, tilePosition.y + 1 }, neighbors, dirs[Direction::downleft]); // Bottom-Left
+    }
 
     return neighbors;
 }
@@ -384,6 +441,19 @@ unsigned int InitRand()
     return seed;
 }
 
+bool AskNewMap()
+{
+    printf("Generate another map? (y/n) ");
+
+    char str[4];
+    char val = 'n';
+    //int ret = scanf_s("%c", &val);
+    if (fgets(str, 4, stdin) != nullptr)
+        val = str[0];
+
+    return val == 'y';
+}
+
 int main(int argc, char** argv)
 {
     InitRules();
@@ -405,6 +475,9 @@ Start:
     }
 
     DrawMap();
+
+    if (AskNewMap())
+        goto Start;
 
     return 0;
 }
