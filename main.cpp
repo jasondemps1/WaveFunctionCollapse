@@ -13,14 +13,18 @@
 #include <exception>
 #include <chrono>
 
+#define MAP_POSITION(y, x, MAX_WIDTH) y * MAX_WIDTH + x
+
 enum Direction : int {
     up, down, left, right, upleft, upright, downleft, downright, MAX
 } direction;
 
-class ContradictionException : public std::exception
-{
-    virtual const char* what() const throw()
-    {
+const char* dir_out[Direction::MAX] = {
+    "up", "down", "left", "right", "upleft", "upright", "downleft", "downright"
+};
+
+class ContradictionException : public std::exception {
+    virtual const char* what() const throw() {
         return "EXCEPTION: Contradiction";
     }
 } ContradictionException;
@@ -68,6 +72,11 @@ unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen;
 
 bool diags = true;
+
+tile& GetMapTile(position pos)
+{
+    return map[pos.x * MAP_WIDTH + pos.y];
+}
 
 int ChooseRandomWeighted(std::vector<double> weights)
 {
@@ -117,46 +126,47 @@ bool IsNegativeBound(int val)
 
 bool IsGreaterBound(int val, int max)
 {
-    return val > max;
+    return val >= max;
 }
 
 void GenerateRules()
 {
-    for (int row = 0; row < EXAMPLE_H; ++row) {
-        for (unsigned col = 0; col < EXAMPLE_W; ++col) {
-            char from = example[row * EXAMPLE_W + col];
+    for (int y = 0; y < EXAMPLE_H; ++y) {
+        for (unsigned x = 0; x < EXAMPLE_W; ++x) {
+            char from = example[MAP_POSITION(y, x, EXAMPLE_W)];
 
             IncreaseFrequency(from);
 
+            int value = MAP_POSITION((y - 1), x, EXAMPLE_H);
+            auto what = example[value];
+
             // Up Check
-            if (!IsNegativeBound(row - 1))
-                AddRule(from, example[(row - 1) * EXAMPLE_W + col], dirs[Direction::up]);
+            if (!IsNegativeBound(y - 1))
+                AddRule(from, example[MAP_POSITION((y - 1), x, EXAMPLE_H)], dirs[Direction::up]);
             // Down Check
-            //if (row < EXAMPLE_H - 1)
-            if (!IsGreaterBound(row, EXAMPLE_H - 1))
-                AddRule(from, example[(row + 1) * EXAMPLE_W + col], dirs[Direction::down]);
+            if (!IsGreaterBound(y + 1, EXAMPLE_H))
+                AddRule(from, example[MAP_POSITION((y + 1), x, EXAMPLE_H)], dirs[Direction::down]);
             // Left Check
-            if (!IsNegativeBound(col - 1))
-                AddRule(from, example[row * EXAMPLE_W + (col - 1)], dirs[Direction::left]);
+            if (!IsNegativeBound(x - 1))
+                AddRule(from, example[MAP_POSITION(y, (x - 1), EXAMPLE_W)], dirs[Direction::left]);
             // Right Check
-            //if (col < EXAMPLE_W - 1)
-            if (!IsGreaterBound(col, EXAMPLE_W - 1))
-                AddRule(from, example[row * EXAMPLE_W + (col + 1)], dirs[Direction::right]);
+            if (!IsGreaterBound(x + 1, EXAMPLE_W))
+                AddRule(from, example[MAP_POSITION(y, (x + 1), EXAMPLE_W)], dirs[Direction::right]);
 
             if (diags) {
                 // UpLeft
-                if (!IsNegativeBound(row - 1) && !IsNegativeBound(col - 1))
-                    AddRule(from, example[(row - 1) * EXAMPLE_W + (col - 1)], dirs[Direction::upleft]);
+                if (!IsNegativeBound(y - 1) && !IsNegativeBound(x - 1))
+                    AddRule(from, example[MAP_POSITION((y - 1), (x - 1), EXAMPLE_W)], dirs[Direction::upleft]);
                 // UpRight
-                if (!IsNegativeBound(row - 1) && !IsNegativeBound(col))
-                    AddRule(from, example[(row - 1) * EXAMPLE_W + col], dirs[Direction::upright]);
+                if (!IsNegativeBound(y - 1) && !IsGreaterBound(x + 1, EXAMPLE_W))
+                    AddRule(from, example[MAP_POSITION((y - 1), (x + 1), EXAMPLE_W)], dirs[Direction::upright]);
 
                 // DownLeft
-                if (!IsNegativeBound(row) && !IsNegativeBound(col - 1))
-                    AddRule(from, example[row * EXAMPLE_W + (col - 1)], dirs[Direction::downleft]);
+                if (!IsGreaterBound(y + 1, EXAMPLE_H) && !IsNegativeBound(x - 1))
+                    AddRule(from, example[MAP_POSITION((y + 1), (x - 1), EXAMPLE_W)], dirs[Direction::downleft]);
                 // DownRight
-                if (!IsNegativeBound(row) && !IsNegativeBound(col))
-                    AddRule(from, example[row * EXAMPLE_W + col], dirs[Direction::downright]);
+                if (!IsGreaterBound(y + 1, EXAMPLE_H) && !IsGreaterBound(x + 1, EXAMPLE_W))
+                    AddRule(from, example[MAP_POSITION((y + 1), (x + 1), EXAMPLE_W)], dirs[Direction::downright]);
             }
         }
     }
@@ -180,14 +190,9 @@ void InitMap()
     // Generate a map of superposition tiles
     for (int i = 0; i < MAP_HEIGHT; ++i)
         for (int j = 0; j < MAP_WIDTH; ++j)
-            map[i * MAP_WIDTH + j] = map_template;
+            map[MAP_POSITION(i, j, MAP_WIDTH)] = map_template;
 
     memset(outputMap, 0, MAP_WIDTH * MAP_HEIGHT * sizeof outputMap[0]);
-}
-
-tile& GetMapTile(position pos)
-{
-    return map[pos.y * MAP_WIDTH + pos.x];
 }
 
 void CollapseWaveFunction(position currentTile)
@@ -370,7 +375,7 @@ position FindLowestEntropyGlobal()
 
     for (int i = 0; i < MAP_HEIGHT; ++i)
         for (int j = 0; j < MAP_WIDTH; ++j) {
-            position tile_pos = position{ j,i };
+            position tile_pos = position{ i,j };
 
             // Immediately ignore any tile thats fully collapsed
             if (GetMapTile(tile_pos).size() == 1)
