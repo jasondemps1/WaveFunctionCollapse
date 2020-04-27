@@ -21,6 +21,7 @@
 #define ENABLE_DEBUG 1
 #define ENABLE_OUTPUT 1
 #define ASK_REPEAT 1
+#define WRITE_MAP 1
 
 #define MAP_POSITION(y, x, MAX_WIDTH) y * MAX_WIDTH + x
 
@@ -52,7 +53,7 @@ dir operator+(dir d1, dir d2) {
 std::vector<char> tiles;
 std::vector<char> exampleMap;
 std::vector<char> outputMap;
-std::unordered_map<char, int> colors;
+std::unordered_map<int, int> colors;
 
 int EXAMPLE_WIDTH = std::numeric_limits<int>::min();
 int EXAMPLE_HEIGHT = std::numeric_limits<int>::min();
@@ -75,7 +76,7 @@ bool diags = true;
 
 struct TileData
 {
-    char c;
+    int c;
     int col;
 };
 
@@ -535,24 +536,36 @@ void OutputResult()
 #endif
 }
 
-int ParseExample(std::string line)
+int ParseExampleTiles(std::string line)
 {
     // Each line consists of a (char, color) (..., ...) combo
-    char c;
-    int col;
+    int tile;
     int count = 0;
     int offset = 0;
     std::size_t read = 0;
 
-    while ((read = line.find('(', offset)) != line.npos) {
-        if (std::sscanf(line.substr(read).c_str(), "(%c, %d),%n", &c, &col, &read) < 0)
-            throw "Could not read file";
+    while (std::sscanf(line.c_str() + offset, "%d,%n", &tile, &read) > 0) {
         offset += read;
         count++;
-        exampleFileData.push_back(TileData{ c, col });
+        exampleFileData.push_back(TileData{ tile, -1 });
     }
 
     return count;
+}
+
+int ParseExampleColors(std::string line)
+{
+    int tileNum;
+    int tileColor;
+
+    if (std::sscanf(line.c_str(), "%d=%d", &tileNum, &tileColor) < 0)
+        throw "Could not read file";
+
+    for (auto& tileData : exampleFileData) {
+        if (tileData.c == tileNum) {
+            tileData.col = tileColor;
+        }
+    }
 }
 
 void InitExampleData(int argc, char** argv)
@@ -573,7 +586,7 @@ void InitExampleData(int argc, char** argv)
         int count = 0;
 
         while (getline(file, line)) {
-            count = ParseExample(line);
+            count = ParseExampleTiles(line);
             lines++;
         }
 
@@ -581,6 +594,19 @@ void InitExampleData(int argc, char** argv)
 
         EXAMPLE_WIDTH = count;
         EXAMPLE_HEIGHT = lines;
+    }
+
+    // Test if we have color data
+    if (argc > 2) {
+        file.open(argv[2]);
+
+        if (file.is_open()) {
+            while (getline(file, line)) {
+                ParseExampleColors(line);
+            }
+        }
+
+        file.close();
     }
 }
 
