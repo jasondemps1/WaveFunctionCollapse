@@ -28,10 +28,6 @@ enum Direction : int {
     up, down, left, right, upleft, upright, downleft, downright, MAX
 } direction;
 
-const char* dir_out[Direction::MAX] = {
-    "up", "down", "left", "right", "upleft", "upright", "downleft", "downright"
-};
-
 class ContradictionException : public std::exception {
     virtual const char* what() const throw() {
         return "EXCEPTION: Contradiction";
@@ -68,8 +64,8 @@ std::unordered_map<char, int> frequencies;
 std::vector<dir> dirs;
 std::vector<rule> rules;
 
-#define MAP_WIDTH 5
-#define MAP_HEIGHT 5
+#define MAP_WIDTH 10
+#define MAP_HEIGHT 10
 
 auto seed = std::chrono::system_clock::now().time_since_epoch().count();
 
@@ -270,7 +266,7 @@ void CollapseWaveFunction(position currentTile)
     printf("Collapsed Position: (%d, %d) into %c\n", currentTile.x, currentTile.y, tile[0]);
 #endif
 
-    outputMap[MAP_POSITION(currentTile.y, currentTile.x, MAP_WIDTH)/*currentTile.x * MAP_WIDTH + currentTile.y*/] = tile[0];
+    outputMap[MAP_POSITION(currentTile.y, currentTile.x, MAP_WIDTH)] = tile[0];
 }
 
 double ShannonEntropy(position tilePosition)
@@ -312,15 +308,15 @@ std::vector<std::pair<position, dir>> FindAvailableNeighbors(position tilePositi
 
     // Start top left and go clock-wise
     TestNeighbor(position{ tilePosition.x, tilePosition.y - 1 }, neighbors, dirs[Direction::up]); // Top
-    TestNeighbor(position{ tilePosition.x + 1, tilePosition.y }, neighbors, dirs[Direction::right]); // Right
     TestNeighbor(position{ tilePosition.x, tilePosition.y + 1 }, neighbors, dirs[Direction::down]); // Bottom
     TestNeighbor(position{ tilePosition.x - 1, tilePosition.y }, neighbors, dirs[Direction::left]); // Left
+    TestNeighbor(position{ tilePosition.x + 1, tilePosition.y }, neighbors, dirs[Direction::right]); // Right
 
     if (diags) {
         TestNeighbor(position{ tilePosition.x - 1, tilePosition.y - 1 }, neighbors, dirs[Direction::upleft]); // Top-Left
         TestNeighbor(position{ tilePosition.x + 1, tilePosition.y - 1 }, neighbors, dirs[Direction::upright]); // Top-Right
-        TestNeighbor(position{ tilePosition.x + 1, tilePosition.y + 1 }, neighbors, dirs[Direction::downright]); // Bottom-Right
         TestNeighbor(position{ tilePosition.x - 1, tilePosition.y + 1 }, neighbors, dirs[Direction::downleft]); // Bottom-Left
+        TestNeighbor(position{ tilePosition.x + 1, tilePosition.y + 1 }, neighbors, dirs[Direction::downright]); // Bottom-Right
     }
 
     return neighbors;
