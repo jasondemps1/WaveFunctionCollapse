@@ -355,7 +355,7 @@ void Constrain(position pos, const char tile)
     }
 
     if (possibilities.size() == 1)
-        outputMap[MAP_POSITION(pos.x, pos.y, MAP_WIDTH)] = possibilities[0];
+        outputMap[MAP_POSITION(pos.y, pos.x, MAP_WIDTH)] = possibilities[0];
 }
 
 // Keep doing this function until the propagation has 'died down'
@@ -545,7 +545,7 @@ int ParseExample(std::string line)
     std::size_t read = 0;
 
     while ((read = line.find('(', offset)) != line.npos) {
-        if (std::sscanf(line.substr(read).c_str(), "(%c, %d)%n", &c, &col, &read) < 0)
+        if (std::sscanf(line.substr(read).c_str(), "(%c, %d),%n", &c, &col, &read) < 0)
             throw "Could not read file";
         offset += read;
         count++;
