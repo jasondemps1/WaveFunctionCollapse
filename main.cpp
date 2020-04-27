@@ -1,4 +1,5 @@
-#include <stdio.h>
+#include <cstdio>
+#include <iostream>
 #include <algorithm>
 #include <vector>
 #include <tuple>
@@ -13,6 +14,8 @@
 #include <exception>
 #include <chrono>
 #include <fstream>
+
+#pragma warning(disable:4996)
 
 #define ENABLE_DEBUG 1
 #define ENABLE_OUTPUT 1
@@ -52,25 +55,31 @@ dir operator+(dir d1, dir d2) {
 #define EXAMPLE_W 3
 #define EXAMPLE_H 3
 
-char tiles[] = { 'S', 'C', 'L' };
+const char tiles[] = { 'S', 'C', 'L' };
 
-char example[EXAMPLE_W * EXAMPLE_H] = {
+const char exampleTemplate[EXAMPLE_W * EXAMPLE_H] = {
     tiles[0], tiles[0], tiles[0],
     tiles[1], tiles[1], tiles[0],
     tiles[2], tiles[2], tiles[1]
 };
 
-#define MAP_WIDTH 10
-#define MAP_HEIGHT 10
+std::vector<char> exampleMap;
 
-tile map[MAP_WIDTH * MAP_HEIGHT];
+//#define MAP_WIDTH 10
+//#define MAP_HEIGHT 10
+int MAP_WIDTH = std::numeric_limits<int>::min();
+int MAP_HEIGHT = std::numeric_limits<int>::min();
+
+std::vector<tile> map;
+//tile map[MAP_WIDTH * MAP_HEIGHT];
 
 std::unordered_map<char, int> frequencies;
 
 std::vector<dir> dirs;
 std::vector<rule> rules;
 
-char outputMap[MAP_WIDTH * MAP_HEIGHT];
+//char outputMap[MAP_WIDTH * MAP_HEIGHT];
+std::vector<char> outputMap;
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 
@@ -138,37 +147,37 @@ void GenerateRules()
 {
     for (int y = 0; y < EXAMPLE_H; ++y) {
         for (unsigned x = 0; x < EXAMPLE_W; ++x) {
-            char from = example[MAP_POSITION(y, x, EXAMPLE_W)];
+            char from = exampleMap[MAP_POSITION(y, x, EXAMPLE_W)];
 
             IncreaseFrequency(from);
 
             // Up Check
             if (!IsNegativeBound(y - 1))
-                AddRule(from, example[MAP_POSITION((y - 1), x, EXAMPLE_H)], dirs[Direction::up]);
+                AddRule(from, exampleMap[MAP_POSITION((y - 1), x, EXAMPLE_H)], dirs[Direction::up]);
             // Down Check
             if (!IsGreaterBound(y + 1, EXAMPLE_H))
-                AddRule(from, example[MAP_POSITION((y + 1), x, EXAMPLE_H)], dirs[Direction::down]);
+                AddRule(from, exampleMap[MAP_POSITION((y + 1), x, EXAMPLE_H)], dirs[Direction::down]);
             // Left Check
             if (!IsNegativeBound(x - 1))
-                AddRule(from, example[MAP_POSITION(y, (x - 1), EXAMPLE_W)], dirs[Direction::left]);
+                AddRule(from, exampleMap[MAP_POSITION(y, (x - 1), EXAMPLE_W)], dirs[Direction::left]);
             // Right Check
             if (!IsGreaterBound(x + 1, EXAMPLE_W))
-                AddRule(from, example[MAP_POSITION(y, (x + 1), EXAMPLE_W)], dirs[Direction::right]);
+                AddRule(from, exampleMap[MAP_POSITION(y, (x + 1), EXAMPLE_W)], dirs[Direction::right]);
 
             if (diags) {
                 // UpLeft
                 if (!IsNegativeBound(y - 1) && !IsNegativeBound(x - 1))
-                    AddRule(from, example[MAP_POSITION((y - 1), (x - 1), EXAMPLE_W)], dirs[Direction::upleft]);
+                    AddRule(from, exampleMap[MAP_POSITION((y - 1), (x - 1), EXAMPLE_W)], dirs[Direction::upleft]);
                 // UpRight
                 if (!IsNegativeBound(y - 1) && !IsGreaterBound(x + 1, EXAMPLE_W))
-                    AddRule(from, example[MAP_POSITION((y - 1), (x + 1), EXAMPLE_W)], dirs[Direction::upright]);
+                    AddRule(from, exampleMap[MAP_POSITION((y - 1), (x + 1), EXAMPLE_W)], dirs[Direction::upright]);
 
                 // DownLeft
                 if (!IsGreaterBound(y + 1, EXAMPLE_H) && !IsNegativeBound(x - 1))
-                    AddRule(from, example[MAP_POSITION((y + 1), (x - 1), EXAMPLE_W)], dirs[Direction::downleft]);
+                    AddRule(from, exampleMap[MAP_POSITION((y + 1), (x - 1), EXAMPLE_W)], dirs[Direction::downleft]);
                 // DownRight
                 if (!IsGreaterBound(y + 1, EXAMPLE_H) && !IsGreaterBound(x + 1, EXAMPLE_W))
-                    AddRule(from, example[MAP_POSITION((y + 1), (x + 1), EXAMPLE_W)], dirs[Direction::downright]);
+                    AddRule(from, exampleMap[MAP_POSITION((y + 1), (x + 1), EXAMPLE_W)], dirs[Direction::downright]);
             }
         }
     }
@@ -198,7 +207,9 @@ void InitMap()
         for (int j = 0; j < MAP_WIDTH; ++j)
             map[MAP_POSITION(i, j, MAP_WIDTH)] = map_template;
 
-    memset(outputMap, 0, MAP_WIDTH * MAP_HEIGHT * sizeof outputMap[0]);
+    //memset(outputMap, 0, MAP_WIDTH * MAP_HEIGHT * sizeof outputMap[0]);
+    outputMap.clear();
+    outputMap.shrink_to_fit();
 }
 
 void CollapseWaveFunction(position currentTile)
@@ -510,15 +521,71 @@ void OutputResult()
 {
 #if ENABLE_OUTPUT
     printf("EXAMPLE:\n");
-    DrawMap(EXAMPLE_W, EXAMPLE_H, example);
+    DrawMap(EXAMPLE_W, EXAMPLE_H, exampleMap.data());
 
     printf("\nRESULT:\n");
-    DrawMap(MAP_WIDTH, MAP_HEIGHT, outputMap);
+    DrawMap(MAP_WIDTH, MAP_HEIGHT, outputMap.data());
 #endif
+}
+
+struct TileData
+{
+    char c;
+    int col;
+};
+
+std::vector<TileData> exampleFileData;
+
+int ParseExample(std::string line)
+{
+    //std::copy(line.begin(), line.end(), std::back_inserter(exampleFileData));
+    // Each line consists of a (char, color) (..., ...) combo
+    char c;
+    int col;
+    int count = 0;
+    int val;
+    //while (std::sscanf(line.c_str(), "(%c, %d)", &c, &col))
+    if (std::sscanf(line.c_str(), "(%c, %d)", &c, &col))
+    {
+        count++;
+        exampleFileData.push_back(TileData{ c, col });
+    }
+
+    return count;
+}
+
+void InitExampleData(int argc, char** argv)
+{
+    // Reading Files =>
+    //  NOW: File should be : (char, color) (..., ...)
+    //  LATER: YAML? JSON? CSV?
+    if (argc > 1) {
+        std::string line;
+        std::ifstream file;
+
+        file.open(argv[1]); // TODO: Add some checking on this string?
+
+        if (file.is_open()) {
+            char* example = nullptr;
+            int lines = 0;
+            int count = 0;
+
+            while (getline(file, line)) {
+                count += ParseExample(line);
+            }
+
+            MAP_WIDTH = count;
+            MAP_HEIGHT = lines;
+
+            file.close();
+        }
+    }
 }
 
 int main(int argc, char** argv)
 {
+    InitExampleData(argc, argv);
+
     InitRules();
     GenerateRules();
     PrintRules();
