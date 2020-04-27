@@ -12,6 +12,11 @@
 #include <stack>
 #include <exception>
 #include <chrono>
+#include <fstream>
+
+#define ENABLE_DEBUG 1
+#define ENABLE_OUTPUT 1
+#define ASK_REPEAT 1
 
 #define MAP_POSITION(y, x, MAX_WIDTH) y * MAX_WIDTH + x
 
@@ -75,7 +80,7 @@ bool diags = true;
 
 tile& GetMapTile(position pos)
 {
-    return map[pos.x * MAP_WIDTH + pos.y];
+    return map[MAP_POSITION(pos.y, pos.x, MAP_WIDTH)];
 }
 
 int ChooseRandomWeighted(std::vector<double> weights)
@@ -137,9 +142,6 @@ void GenerateRules()
 
             IncreaseFrequency(from);
 
-            int value = MAP_POSITION((y - 1), x, EXAMPLE_H);
-            auto what = example[value];
-
             // Up Check
             if (!IsNegativeBound(y - 1))
                 AddRule(from, example[MAP_POSITION((y - 1), x, EXAMPLE_H)], dirs[Direction::up]);
@@ -174,13 +176,17 @@ void GenerateRules()
 
 void PrintRules()
 {
+#if ENABLE_DEBUG
     for (rule r : rules) {
         printf("%c (%d, %d) %c\n", std::get<0>(r), std::get<0>(std::get<2>(r)), std::get<1>(std::get<2>(r)), std::get<1>(r));
     }
+#endif
 
+#if ENABLE_DEBUG
     for (auto& f : frequencies) {
         printf("Saw %c => %d times\n", f.first, f.second);
     }
+#endif
 }
 
 void InitMap()
@@ -235,7 +241,9 @@ void CollapseWaveFunction(position currentTile)
     if (tile.empty())
         throw ContradictionException;
 
+#if ENABLE_DEBUG
     printf("Collapsed Position: (%d, %d) into %c\n", currentTile.x, currentTile.y, tile[0]);
+#endif
 
     outputMap[currentTile.x * MAP_WIDTH + currentTile.y] = tile[0];
 }
@@ -314,6 +322,7 @@ void Constrain(position pos, const char tile)
         if (possibilities.empty())
             throw ContradictionException;
 
+#if ENABLE_DEBUG
         printf("Constrained Position: (%d, %d) into ", pos.x, pos.y);
 
         for (auto& possibility : possibilities) {
@@ -321,10 +330,11 @@ void Constrain(position pos, const char tile)
         }
 
         printf("\n");
+#endif
     }
 
     if (possibilities.size() == 1)
-        outputMap[pos.x * MAP_WIDTH + pos.y] = possibilities[0];
+        outputMap[MAP_POSITION(pos.x, pos.y, MAP_WIDTH)] = possibilities[0];
 }
 
 // Keep doing this function until the propagation has 'died down'
@@ -414,6 +424,7 @@ bool IsGloballyCollapsed()
 #define COLOR_PURPLE 5
 #define COLOR_WHITE 15
 
+#ifdef _WIN32
 #include <windows.h>
 
 inline void setcolor(int textcol, int backcol)
@@ -422,9 +433,9 @@ inline void setcolor(int textcol, int backcol)
     textcol %= 16; backcol %= 16;
     unsigned short wAttributes = ((unsigned)backcol << 4) | (unsigned)textcol;
     HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
     SetConsoleTextAttribute(hStdOut, wAttributes);
 }
+#endif
 
 void DrawMap(int xBound, int yBound, const char* map)
 {
@@ -475,7 +486,9 @@ unsigned int InitRand()
     std::srand(seed);
     gen.seed(seed);
 
+#if ENABLE_DEBUG
     printf("Seed value: %u\n", seed);
+#endif
 
     return seed;
 }
@@ -493,6 +506,17 @@ bool AskNewMap()
     return val == 'y';
 }
 
+void OutputResult()
+{
+#if ENABLE_OUTPUT
+    printf("EXAMPLE:\n");
+    DrawMap(EXAMPLE_W, EXAMPLE_H, example);
+
+    printf("\nRESULT:\n");
+    DrawMap(MAP_WIDTH, MAP_HEIGHT, outputMap);
+#endif
+}
+
 int main(int argc, char** argv)
 {
     InitRules();
@@ -508,19 +532,19 @@ Start:
     }
     catch (std::exception & e)
     {
+#if ENABLE_OUTPUT
         printf("%s\n", e.what());
-        DrawMap(MAP_WIDTH, MAP_HEIGHT, outputMap);
+#endif
+        OutputResult();
         goto Start;
     }
 
-    printf("EXAMPLE:\n");
-    DrawMap(EXAMPLE_W, EXAMPLE_H, example);
+    OutputResult();
 
-    printf("\nRESULT:\n");
-    DrawMap(MAP_WIDTH, MAP_HEIGHT, outputMap);
-
+#if ASK_REPEAT
     if (AskNewMap())
         goto Start;
+#endif
 
     return 0;
 }
