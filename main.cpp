@@ -14,6 +14,7 @@
 #include <exception>
 #include <chrono>
 #include <fstream>
+#include <sstream>
 
 #pragma warning(disable:4996)
 
@@ -52,40 +53,37 @@ dir operator+(dir d1, dir d2) {
     );
 }
 
-#define EXAMPLE_W 3
-#define EXAMPLE_H 3
-
-const char tiles[] = { 'S', 'C', 'L' };
-
-const char exampleTemplate[EXAMPLE_W * EXAMPLE_H] = {
-    tiles[0], tiles[0], tiles[0],
-    tiles[1], tiles[1], tiles[0],
-    tiles[2], tiles[2], tiles[1]
-};
-
+std::vector<char> tiles;
 std::vector<char> exampleMap;
+std::vector<char> outputMap;
+std::unordered_map<char, int> colors;
 
-//#define MAP_WIDTH 10
-//#define MAP_HEIGHT 10
-int MAP_WIDTH = std::numeric_limits<int>::min();
-int MAP_HEIGHT = std::numeric_limits<int>::min();
+int EXAMPLE_WIDTH = std::numeric_limits<int>::min();
+int EXAMPLE_HEIGHT = std::numeric_limits<int>::min();
 
 std::vector<tile> map;
-//tile map[MAP_WIDTH * MAP_HEIGHT];
 
 std::unordered_map<char, int> frequencies;
 
 std::vector<dir> dirs;
 std::vector<rule> rules;
 
-//char outputMap[MAP_WIDTH * MAP_HEIGHT];
-std::vector<char> outputMap;
+#define MAP_WIDTH 5
+#define MAP_HEIGHT 5
 
-unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+auto seed = std::chrono::system_clock::now().time_since_epoch().count();
 
 std::mt19937 gen;
 
 bool diags = true;
+
+struct TileData
+{
+    char c;
+    int col;
+};
+
+std::vector<TileData> exampleFileData;
 
 tile& GetMapTile(position pos)
 {
@@ -143,41 +141,59 @@ bool IsGreaterBound(int val, int max)
     return val >= max;
 }
 
+void ParseFileData()
+{
+    if (exampleFileData.empty())
+        throw "No File Data to parse.";
+
+    for (auto& tile_data : exampleFileData) {
+        auto it = std::find(tiles.begin(), tiles.end(), tile_data.c);
+
+        if (it == tiles.end())
+            tiles.push_back(tile_data.c);
+
+        exampleMap.push_back(tile_data.c);
+        colors[tile_data.c] = tile_data.col;
+    }
+}
+
 void GenerateRules()
 {
-    for (int y = 0; y < EXAMPLE_H; ++y) {
-        for (unsigned x = 0; x < EXAMPLE_W; ++x) {
-            char from = exampleMap[MAP_POSITION(y, x, EXAMPLE_W)];
+    ParseFileData();
+
+    for (int y = 0; y < EXAMPLE_HEIGHT; ++y) {
+        for (int x = 0; x < EXAMPLE_WIDTH; ++x) {
+            char from = exampleMap[MAP_POSITION(y, x, EXAMPLE_WIDTH)];
 
             IncreaseFrequency(from);
 
             // Up Check
             if (!IsNegativeBound(y - 1))
-                AddRule(from, exampleMap[MAP_POSITION((y - 1), x, EXAMPLE_H)], dirs[Direction::up]);
+                AddRule(from, exampleMap[MAP_POSITION((y - 1), x, EXAMPLE_HEIGHT)], dirs[Direction::up]);
             // Down Check
-            if (!IsGreaterBound(y + 1, EXAMPLE_H))
-                AddRule(from, exampleMap[MAP_POSITION((y + 1), x, EXAMPLE_H)], dirs[Direction::down]);
+            if (!IsGreaterBound(y + 1, EXAMPLE_HEIGHT))
+                AddRule(from, exampleMap[MAP_POSITION((y + 1), x, EXAMPLE_HEIGHT)], dirs[Direction::down]);
             // Left Check
             if (!IsNegativeBound(x - 1))
-                AddRule(from, exampleMap[MAP_POSITION(y, (x - 1), EXAMPLE_W)], dirs[Direction::left]);
+                AddRule(from, exampleMap[MAP_POSITION(y, (x - 1), EXAMPLE_WIDTH)], dirs[Direction::left]);
             // Right Check
-            if (!IsGreaterBound(x + 1, EXAMPLE_W))
-                AddRule(from, exampleMap[MAP_POSITION(y, (x + 1), EXAMPLE_W)], dirs[Direction::right]);
+            if (!IsGreaterBound(x + 1, EXAMPLE_WIDTH))
+                AddRule(from, exampleMap[MAP_POSITION(y, (x + 1), EXAMPLE_WIDTH)], dirs[Direction::right]);
 
             if (diags) {
                 // UpLeft
                 if (!IsNegativeBound(y - 1) && !IsNegativeBound(x - 1))
-                    AddRule(from, exampleMap[MAP_POSITION((y - 1), (x - 1), EXAMPLE_W)], dirs[Direction::upleft]);
+                    AddRule(from, exampleMap[MAP_POSITION((y - 1), (x - 1), EXAMPLE_WIDTH)], dirs[Direction::upleft]);
                 // UpRight
-                if (!IsNegativeBound(y - 1) && !IsGreaterBound(x + 1, EXAMPLE_W))
-                    AddRule(from, exampleMap[MAP_POSITION((y - 1), (x + 1), EXAMPLE_W)], dirs[Direction::upright]);
+                if (!IsNegativeBound(y - 1) && !IsGreaterBound(x + 1, EXAMPLE_WIDTH))
+                    AddRule(from, exampleMap[MAP_POSITION((y - 1), (x + 1), EXAMPLE_WIDTH)], dirs[Direction::upright]);
 
                 // DownLeft
-                if (!IsGreaterBound(y + 1, EXAMPLE_H) && !IsNegativeBound(x - 1))
-                    AddRule(from, exampleMap[MAP_POSITION((y + 1), (x - 1), EXAMPLE_W)], dirs[Direction::downleft]);
+                if (!IsGreaterBound(y + 1, EXAMPLE_HEIGHT) && !IsNegativeBound(x - 1))
+                    AddRule(from, exampleMap[MAP_POSITION((y + 1), (x - 1), EXAMPLE_WIDTH)], dirs[Direction::downleft]);
                 // DownRight
-                if (!IsGreaterBound(y + 1, EXAMPLE_H) && !IsGreaterBound(x + 1, EXAMPLE_W))
-                    AddRule(from, exampleMap[MAP_POSITION((y + 1), (x + 1), EXAMPLE_W)], dirs[Direction::downright]);
+                if (!IsGreaterBound(y + 1, EXAMPLE_HEIGHT) && !IsGreaterBound(x + 1, EXAMPLE_WIDTH))
+                    AddRule(from, exampleMap[MAP_POSITION((y + 1), (x + 1), EXAMPLE_WIDTH)], dirs[Direction::downright]);
             }
         }
     }
@@ -186,12 +202,14 @@ void GenerateRules()
 void PrintRules()
 {
 #if ENABLE_DEBUG
+    printf(" => Learned Rules:\n");
     for (rule r : rules) {
         printf("%c (%d, %d) %c\n", std::get<0>(r), std::get<0>(std::get<2>(r)), std::get<1>(std::get<2>(r)), std::get<1>(r));
     }
 #endif
 
 #if ENABLE_DEBUG
+    printf(" => Frequencies:\n");
     for (auto& f : frequencies) {
         printf("Saw %c => %d times\n", f.first, f.second);
     }
@@ -200,16 +218,12 @@ void PrintRules()
 
 void InitMap()
 {
-    tile map_template(tiles, tiles + sizeof(tiles));
+    map.clear();
+    for (int i = 0; i < MAP_HEIGHT * MAP_WIDTH; ++i)
+        map.push_back(tiles);
 
-    // Generate a map of superposition tiles
-    for (int i = 0; i < MAP_HEIGHT; ++i)
-        for (int j = 0; j < MAP_WIDTH; ++j)
-            map[MAP_POSITION(i, j, MAP_WIDTH)] = map_template;
-
-    //memset(outputMap, 0, MAP_WIDTH * MAP_HEIGHT * sizeof outputMap[0]);
     outputMap.clear();
-    outputMap.shrink_to_fit();
+    outputMap.resize(map.size());
 }
 
 void CollapseWaveFunction(position currentTile)
@@ -256,7 +270,7 @@ void CollapseWaveFunction(position currentTile)
     printf("Collapsed Position: (%d, %d) into %c\n", currentTile.x, currentTile.y, tile[0]);
 #endif
 
-    outputMap[currentTile.x * MAP_WIDTH + currentTile.y] = tile[0];
+    outputMap[MAP_POSITION(currentTile.y, currentTile.x, MAP_WIDTH)/*currentTile.x * MAP_WIDTH + currentTile.y*/] = tile[0];
 }
 
 double ShannonEntropy(position tilePosition)
@@ -440,7 +454,7 @@ bool IsGloballyCollapsed()
 
 inline void setcolor(int textcol, int backcol)
 {
-    if ((textcol % 16) == (backcol % 16))textcol++;
+    //if ((textcol % 16) == (backcol % 16))textcol++;
     textcol %= 16; backcol %= 16;
     unsigned short wAttributes = ((unsigned)backcol << 4) | (unsigned)textcol;
     HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -452,22 +466,19 @@ void DrawMap(int xBound, int yBound, const char* map)
 {
     for (int y = 0; y < yBound; ++y) {
         for (int x = 0; x < xBound; ++x) {
-            auto c = map[MAP_POSITION(y, x, xBound)];
+            char c = map[MAP_POSITION(y, x, xBound)];
+            try {
+                int col = colors.at(c);
 
-            switch (c) {
-            case 'S':
-                setcolor(COLOR_BLUE, COLOR_BLUE);
-                break;
-            case 'C':
-                setcolor(COLOR_RED, COLOR_RED);
-                break;
-            case 'L':
-                setcolor(COLOR_GREEN, COLOR_GREEN);
-                break;
+                setcolor(col, col);
+            }
+            catch (std::exception & e) {
+                continue;
             }
 
             printf("%c", c);
         }
+
         setcolor(COLOR_WHITE, COLOR_BLACK);
         printf("\n");
     }
@@ -490,7 +501,7 @@ void Engine()
     }
 }
 
-unsigned int InitRand()
+unsigned long long InitRand()
 {
     seed = std::chrono::system_clock::now().time_since_epoch().count();
 
@@ -498,7 +509,7 @@ unsigned int InitRand()
     gen.seed(seed);
 
 #if ENABLE_DEBUG
-    printf("Seed value: %u\n", seed);
+    printf("Seed value: %llu\n", seed);
 #endif
 
     return seed;
@@ -510,7 +521,7 @@ bool AskNewMap()
 
     char str[4];
     char val = 'n';
-    //int ret = scanf_s("%c", &val);
+
     if (fgets(str, 4, stdin) != nullptr)
         val = str[0];
 
@@ -521,32 +532,26 @@ void OutputResult()
 {
 #if ENABLE_OUTPUT
     printf("EXAMPLE:\n");
-    DrawMap(EXAMPLE_W, EXAMPLE_H, exampleMap.data());
+    DrawMap(EXAMPLE_WIDTH, EXAMPLE_HEIGHT, exampleMap.data());
 
     printf("\nRESULT:\n");
     DrawMap(MAP_WIDTH, MAP_HEIGHT, outputMap.data());
 #endif
 }
 
-struct TileData
-{
-    char c;
-    int col;
-};
-
-std::vector<TileData> exampleFileData;
-
 int ParseExample(std::string line)
 {
-    //std::copy(line.begin(), line.end(), std::back_inserter(exampleFileData));
     // Each line consists of a (char, color) (..., ...) combo
     char c;
     int col;
     int count = 0;
-    int val;
-    //while (std::sscanf(line.c_str(), "(%c, %d)", &c, &col))
-    if (std::sscanf(line.c_str(), "(%c, %d)", &c, &col))
-    {
+    int offset = 0;
+    std::size_t read = 0;
+
+    while ((read = line.find('(', offset)) != line.npos) {
+        if (std::sscanf(line.substr(read).c_str(), "(%c, %d)%n", &c, &col, &read) < 0)
+            throw "Could not read file";
+        offset += read;
         count++;
         exampleFileData.push_back(TileData{ c, col });
     }
@@ -559,32 +564,42 @@ void InitExampleData(int argc, char** argv)
     // Reading Files =>
     //  NOW: File should be : (char, color) (..., ...)
     //  LATER: YAML? JSON? CSV?
-    if (argc > 1) {
-        std::string line;
-        std::ifstream file;
+    if (argc < 2)
+        throw "Please provide an input file for example";
 
-        file.open(argv[1]); // TODO: Add some checking on this string?
+    std::string line;
+    std::ifstream file;
 
-        if (file.is_open()) {
-            char* example = nullptr;
-            int lines = 0;
-            int count = 0;
+    file.open(argv[1]); // TODO: Add some checking on this string?
 
-            while (getline(file, line)) {
-                count += ParseExample(line);
-            }
+    if (file.is_open()) {
+        int lines = 0;
+        int count = 0;
 
-            MAP_WIDTH = count;
-            MAP_HEIGHT = lines;
-
-            file.close();
+        while (getline(file, line)) {
+            count = ParseExample(line);
+            lines++;
         }
+
+        file.close();
+
+        EXAMPLE_WIDTH = count;
+        EXAMPLE_HEIGHT = lines;
     }
 }
 
 int main(int argc, char** argv)
 {
-    InitExampleData(argc, argv);
+    try {
+        InitExampleData(argc, argv);
+    }
+    catch (std::exception & e)
+    {
+#if ENABLE_OUTPUT
+        printf("%s\n", e.what());
+#endif
+        return -1;
+    }
 
     InitRules();
     GenerateRules();
