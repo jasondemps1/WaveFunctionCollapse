@@ -60,13 +60,13 @@ int EXAMPLE_HEIGHT = std::numeric_limits<int>::min();
 
 std::vector<tile> map;
 
-std::unordered_map<char, int> frequencies;
+std::unordered_map<int, int> frequencies;
 
 std::vector<dir> dirs;
 std::vector<rule> rules;
 
-#define MAP_WIDTH 10
-#define MAP_HEIGHT 10
+#define MAP_WIDTH 32
+#define MAP_HEIGHT 32
 
 auto seed = std::chrono::system_clock::now().time_since_epoch().count();
 
@@ -150,7 +150,12 @@ void ParseFileData()
             tiles.push_back(tile_data.c);
 
         exampleMap.push_back(tile_data.c);
-        colors[tile_data.c] = tile_data.col;
+
+        if (tile_data.col == -1) {
+            colors[tile_data.c] = rand() % 25;
+        }
+        else
+            colors[tile_data.c] = tile_data.col;
     }
 }
 
@@ -201,14 +206,14 @@ void PrintRules()
 #if ENABLE_DEBUG
     printf(" => Learned Rules:\n");
     for (rule r : rules) {
-        printf("%c (%d, %d) %c\n", std::get<0>(r), std::get<0>(std::get<2>(r)), std::get<1>(std::get<2>(r)), std::get<1>(r));
+        printf("%d (%d, %d) %d\n", std::get<0>(r), std::get<0>(std::get<2>(r)), std::get<1>(std::get<2>(r)), std::get<1>(r));
     }
 #endif
 
 #if ENABLE_DEBUG
     printf(" => Frequencies:\n");
     for (auto& f : frequencies) {
-        printf("Saw %c => %d times\n", f.first, f.second);
+        printf("Saw %d => %d times\n", f.first, f.second);
     }
 #endif
 }
@@ -264,7 +269,7 @@ void CollapseWaveFunction(position currentTile)
         throw ContradictionException;
 
 #if ENABLE_DEBUG
-    printf("Collapsed Position: (%d, %d) into %c\n", currentTile.x, currentTile.y, tile[0]);
+    printf("Collapsed Position: (%d, %d) into %d\n", currentTile.x, currentTile.y, tile[0]);
 #endif
 
     outputMap[MAP_POSITION(currentTile.y, currentTile.x, MAP_WIDTH)] = tile[0];
@@ -348,7 +353,7 @@ void Constrain(position pos, const char tile)
         printf("Constrained Position: (%d, %d) into ", pos.x, pos.y);
 
         for (auto& possibility : possibilities) {
-            printf("%c ", possibility);
+            printf("%d ", possibility);
         }
 
         printf("\n");
