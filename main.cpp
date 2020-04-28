@@ -583,7 +583,7 @@ int ParseExampleTiles(std::string line)
     return count;
 }
 
-int ParseExampleColors(std::string line)
+void ParseExampleColors(std::string line)
 {
     int tileNum;
     int tileColor;

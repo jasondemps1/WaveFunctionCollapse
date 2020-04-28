@@ -351,3 +351,5 @@ MigrationBackup/
 
 assets/output_maps/*.csv
 !assets/output_maps/map_example.csv
+/WaveFunctionCollapse
+*.zip
