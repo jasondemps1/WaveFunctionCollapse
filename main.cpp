@@ -21,6 +21,7 @@
 #define ENABLE_DEBUG 1
 #define ENABLE_OUTPUT 1
 #define ASK_REPEAT 1
+#define ASK_OUTPUT 1
 #define WRITE_MAP 1
 
 #define MAP_POSITION(y, x, MAX_WIDTH) y * MAX_WIDTH + x
@@ -65,8 +66,8 @@ std::unordered_map<int, int> frequencies;
 std::vector<dir> dirs;
 std::vector<rule> rules;
 
-#define MAP_WIDTH 32
-#define MAP_HEIGHT 32
+#define MAP_WIDTH 10
+#define MAP_HEIGHT 10
 
 auto seed = std::chrono::system_clock::now().time_since_epoch().count();
 
@@ -486,6 +487,25 @@ void DrawMap(int xBound, int yBound, const char* map)
     }
 }
 
+void WriteMap(std::string const& filePath, int xBound, int yBound, const char* map)
+{
+    // TODO: Build map filename from Seed value
+    std::string fileName = filePath + '\\' + "map_" + std::to_string(seed) + ".csv";
+    std::ofstream file(fileName, std::ofstream::out);
+
+    if (file.is_open()) {
+        for (int y = 0; y < yBound; ++y) {
+            for (int x = 0; x < xBound; ++x) {
+                int c = map[MAP_POSITION(y, x, xBound)];
+
+                file << c << ',';
+            }
+
+            file << std::endl;
+        }
+    }
+}
+
 void Step()
 {
     position nextTile = FindLowestEntropyGlobal();
@@ -530,7 +550,7 @@ bool AskNewMap()
     return val == 'y';
 }
 
-void OutputResult()
+void OutputResult(std::string filePath = std::string())
 {
 #if ENABLE_OUTPUT
     printf("EXAMPLE:\n");
@@ -538,6 +558,11 @@ void OutputResult()
 
     printf("\nRESULT:\n");
     DrawMap(MAP_WIDTH, MAP_HEIGHT, outputMap.data());
+#endif
+
+#if ASK_OUTPUT
+    if (!filePath.empty())
+        WriteMap(filePath, MAP_WIDTH, MAP_HEIGHT, outputMap.data());
 #endif
 }
 
@@ -578,8 +603,8 @@ void InitExampleData(int argc, char** argv)
     // Reading Files =>
     //  NOW: File should be : (char, color) (..., ...)
     //  LATER: YAML? JSON? CSV?
-    if (argc < 2)
-        throw "Please provide an input file for example";
+    if (argc < 3)
+        throw "Please provide: an example file | map output directory | (optional)color data file";
 
     std::string line;
     std::ifstream file;
@@ -602,17 +627,15 @@ void InitExampleData(int argc, char** argv)
     }
 
     // Test if we have color data
-    if (argc > 2) {
-        file.open(argv[2]);
+    file.open(argv[3]);
 
-        if (file.is_open()) {
-            while (getline(file, line)) {
-                ParseExampleColors(line);
-            }
+    if (file.is_open()) {
+        while (getline(file, line)) {
+            ParseExampleColors(line);
         }
-
-        file.close();
     }
+
+    file.close();
 }
 
 int main(int argc, char** argv)
@@ -648,7 +671,7 @@ Start:
         goto Start;
     }
 
-    OutputResult();
+    OutputResult(argv[2]);
 
 #if ASK_REPEAT
     if (AskNewMap())
